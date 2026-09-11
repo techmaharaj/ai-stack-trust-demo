@@ -1,0 +1,36 @@
+# Gate 4. Real admission control -- not a synthetic-object workaround.
+# Any UPDATE or DELETE against a Pod/Deployment labeled env=prod is denied
+# unless it carries the ${APPROVAL_ANNOTATION_KEY} annotation. kagent's
+# built-in write tools (k8s_rollout, k8s_delete_resource, k8s_patch_resource)
+# call the real Kubernetes API as themselves, so this webhook genuinely
+# intercepts them -- no simulation layer needed.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: ${NAMESPACE_PREFIX}-prod-approval-gate
+  labels:
+    demo.io/managed-by: ai-stack-trust-demo
+spec:
+  validationFailureAction: Enforce
+  background: false
+  rules:
+    - name: require-approval-for-prod-mutation
+      match:
+        any:
+          - resources:
+              kinds: ["Pod", "Deployment"]
+              selector:
+                matchLabels:
+                  env: prod
+              operations: ["UPDATE", "DELETE"]
+      validate:
+        message: >-
+          denied: mutating a prod-labeled resource requires the
+          '${APPROVAL_ANNOTATION_KEY}' annotation. This action was not
+          pre-approved.
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.metadata.annotations.\"${APPROVAL_ANNOTATION_KEY}\" || '' }}"
+                operator: Equals
+                value: ""

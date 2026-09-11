@@ -1,0 +1,26 @@
+# Gate 2's tool server. kagent's own kmcp-manager-controller runs this as
+# a managed stdio subprocess -- same pattern as kagent's documented
+# mcp-server-fetch example, just our own image instead of a PyPI package
+# run via uvx.
+apiVersion: kagent.dev/v1alpha1
+kind: MCPServer
+metadata:
+  name: runbook-search
+  namespace: kagent
+  labels:
+    demo.io/managed-by: ai-stack-trust-demo
+spec:
+  deployment:
+    image: ${LOCAL_REGISTRY}/ai-stack-trust-demo/runbook-search:latest
+    cmd: python
+    args: ["mcp_server.py"]
+    port: 3000
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+  stdioTransport: {}
+  transportType: stdio

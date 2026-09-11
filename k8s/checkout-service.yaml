@@ -1,0 +1,45 @@
+# A genuinely crash-looping workload, not a scripted fixture -- the
+# container really starts, logs a DB timeout, and exits 1, so
+# `kubectl logs` / `kubectl get pod` / a real restart all return real data.
+# Labeled env=prod on purpose: this is the resource the Kyverno policy in
+# kyverno-policy.yaml protects.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout-service
+  namespace: ${NAMESPACE_PREFIX}-staging
+  labels:
+    demo.io/managed-by: ai-stack-trust-demo
+    app: checkout-service
+    env: prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: checkout-service
+  template:
+    metadata:
+      labels:
+        app: checkout-service
+        env: prod
+        demo.io/managed-by: ai-stack-trust-demo
+    spec:
+      containers:
+        - name: checkout-service
+          image: busybox:1.36
+          command: ["sh", "-c"]
+          args:
+            - |
+              echo "$(date -Iseconds) INFO  starting checkout-service"
+              sleep 2
+              echo "$(date -Iseconds) ERROR db connection failed: timeout connecting to postgres://prod-db.internal:5432/checkout_db: context deadline exceeded"
+              echo "$(date -Iseconds) ERROR connection pool exhausted after 3 retries"
+              sleep 1
+              exit 1
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi

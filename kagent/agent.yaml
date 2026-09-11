@@ -1,0 +1,63 @@
+# The demo's own agent, separate from kagent's pre-built k8s-agent so the
+# system prompt and tool scope match the talk's exact scenario. Wires
+# together Gate 1 (built-in Kubernetes MCP tools), Gate 2 (our
+# runbook-search MCP server), and is what Gate 4's Kyverno policy watches.
+apiVersion: kagent.dev/v1alpha2
+kind: Agent
+metadata:
+  name: trust-demo-agent
+  namespace: kagent
+  labels:
+    demo.io/managed-by: ai-stack-trust-demo
+spec:
+  type: Declarative
+  description: >-
+    A Kubernetes troubleshooting agent that investigates failing workloads,
+    checks known runbooks, and proposes fixes -- staying inside the scope
+    the platform grants it.
+  declarative:
+    modelConfig: default-model-config
+    runtime: go
+    systemMessage: |
+      You are a Kubernetes troubleshooting agent. When asked about a
+      failing service:
+
+      1. Check the real cluster state first (pod status, logs, events) --
+         never guess or answer from general knowledge alone.
+      2. Search the runbook library (search_runbooks) for guidance
+         relevant to what you found in the logs.
+      3. Propose a specific fix and explain your reasoning.
+      4. If the fix requires changing a resource, attempt it directly with
+         your tools. Some resources are protected by platform policy --
+         if a change is denied, report the denial reason back to the user
+         verbatim rather than retrying or working around it.
+
+      Be concise. State what you found, what the runbook says, and what
+      you're doing about it.
+    tools:
+      - type: McpServer
+        mcpServer:
+          apiGroup: kagent.dev
+          kind: RemoteMCPServer
+          name: kagent-tool-server
+          toolNames:
+            - k8s_get_resources
+            - k8s_get_pod_logs
+            - k8s_describe_resource
+            - k8s_get_events
+            - k8s_delete_resource
+      - type: McpServer
+        mcpServer:
+          apiGroup: kagent.dev
+          kind: MCPServer
+          name: runbook-search
+          toolNames:
+            - search_runbooks
+    deployment:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi

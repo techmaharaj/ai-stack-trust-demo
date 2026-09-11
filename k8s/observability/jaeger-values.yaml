@@ -1,0 +1,60 @@
+# allInOne mode (the chart default) runs the image's legacy v1-compat
+# entrypoint, driven by COLLECTOR_* env vars -- the top-level `config:`
+# values key is a no-op there. The only way to control the real v2
+# OTel-Collector config underneath is `userconfig`, a raw config file the
+# chart mounts and passes via --config -- has to be a complete pipeline,
+# not an override.
+#
+# kagent-tools exports OTLP directly to this Jaeger's :4317 -- no separate
+# OTel Collector needed for this demo's scale.
+fullnameOverride: jaeger
+
+provisionDataStore:
+  cassandra: false
+  elasticsearch: false
+
+resources:
+  requests:
+    cpu: 25m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+userconfig: |
+  service:
+    extensions: [jaeger_storage, jaeger_query, healthcheckv2]
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [batch]
+        exporters: [jaeger_storage_exporter]
+
+  extensions:
+    healthcheckv2:
+      use_v2: true
+      http:
+        endpoint: 0.0.0.0:13133
+    jaeger_query:
+      storage:
+        traces: primary_store
+    jaeger_storage:
+      backends:
+        primary_store:
+          memory:
+            max_traces: 20000
+
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+  processors:
+    batch: {}
+
+  exporters:
+    jaeger_storage_exporter:
+      trace_storage: primary_store
