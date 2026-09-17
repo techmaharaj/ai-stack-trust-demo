@@ -1,9 +1,19 @@
 # Gate 4. Real admission control -- not a synthetic-object workaround.
 # Any UPDATE or DELETE against a Pod/Deployment labeled env=prod is denied
-# unless it carries the ${APPROVAL_ANNOTATION_KEY} annotation. kagent's
-# built-in write tools (k8s_rollout, k8s_delete_resource, k8s_patch_resource)
-# call the real Kubernetes API as themselves, so this webhook genuinely
-# intercepts them -- no simulation layer needed.
+# unless it *already carried* the ${APPROVAL_ANNOTATION_KEY} annotation
+# BEFORE this request (checked against request.oldObject, not
+# request.object). kagent's built-in write tools (k8s_rollout,
+# k8s_delete_resource, k8s_patch_resource) call the real Kubernetes API as
+# themselves, so this webhook genuinely intercepts them -- no simulation
+# layer needed.
+#
+# GOTCHA (found 2026-09-17, first live run): checking request.object
+# instead of request.oldObject let the agent self-approve -- it just added
+# the annotation in the same patch that was supposed to be gated by it.
+# oldObject reflects the resource's state prior to this request, so the
+# annotation only counts if a human (or something with a distinct
+# identity) put it there beforehand; the agent including it in its own
+# payload no longer helps.
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
@@ -31,6 +41,6 @@ spec:
         deny:
           conditions:
             any:
-              - key: "{{ request.object.metadata.annotations.\"${APPROVAL_ANNOTATION_KEY}\" || '' }}"
+              - key: "{{ request.oldObject.metadata.annotations.\"${APPROVAL_ANNOTATION_KEY}\" || '' }}"
                 operator: Equals
                 value: ""
