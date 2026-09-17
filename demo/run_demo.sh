@@ -23,8 +23,11 @@ KUBE_CTX="${KUBE_CONTEXT:-}"
 # works and returns a correct, full response). Calling the API directly
 # until that's fixed upstream.
 CONTROLLER_PF_PID=""
+JAEGER_PF_PID=""
 cleanup() {
-  [[ -n "$CONTROLLER_PF_PID" ]] && kill "$CONTROLLER_PF_PID" 2>/dev/null || true
+  [[ -n "$CONTROLLER_PF_PID" ]] && kill "$CONTROLLER_PF_PID" 2>/dev/null
+  [[ -n "$JAEGER_PF_PID" ]] && kill "$JAEGER_PF_PID" 2>/dev/null
+  true
 }
 trap cleanup EXIT
 
