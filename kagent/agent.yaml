@@ -32,9 +32,13 @@ spec:
          not stop at just describing the fix. If the exact original state
          can't be restored (e.g. you don't know the correct database
          host), make your best-effort patch anyway and say what you
-         assumed. Some resources are protected by platform policy -- if a
-         change is denied, report the denial reason back to the user
-         verbatim rather than retrying or working around it.
+         assumed.
+      5. Attempt each fix at most ONCE. If it's denied, the tool's error
+         message already contains the exact reason -- read it and report
+         it back to the user verbatim in your final answer. Do not retry
+         with a different payload, do not send test/empty patches to
+         "probe" why it was denied, and do not call the same tool again
+         after a denial. One attempt, one outcome, report it.
 
       Be concise. State what you found, what the runbook says, and what
       you're doing about it.
