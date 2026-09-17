@@ -92,10 +92,17 @@ python3 -c "
 import json
 with open('/tmp/ai-stack-trust-demo-response.json') as f:
     d = json.load(f)
-if 'result' in d:
-    print(d['result']['artifacts'][0]['parts'][0]['text'])
+result = d.get('result', {})
+if result.get('status', {}).get('state') == 'failed':
+    msg = result['status']['message']['parts'][0]['text']
+    print('The agent task failed (often an upstream LLM rate-limit or outage,')
+    print('not this setup -- try again in a moment, or pin a different')
+    print('LLM_MODEL in .env):')
+    print(msg)
+elif 'artifacts' in result:
+    print(result['artifacts'][0]['parts'][0]['text'])
 else:
-    print('Agent returned an error instead of a result:')
+    print('Unexpected response shape:')
     print(json.dumps(d, indent=2))
 "
 echo
