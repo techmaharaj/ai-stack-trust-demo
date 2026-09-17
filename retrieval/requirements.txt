@@ -1,2 +1,5 @@
-mcp>=1.2.0
+# mcp 2.x renamed FastMCP -> MCPServer and changed other APIs (found
+# 2026-09-17: the runtime error itself names the exact fix). Pin <2 to
+# keep using the documented FastMCP pattern this server is written against.
+mcp>=1.2.0,<2
 pymilvus[milvus_lite]>=2.5.0
