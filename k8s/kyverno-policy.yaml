@@ -33,6 +33,17 @@ spec:
                 matchLabels:
                   env: prod
               operations: ["UPDATE", "DELETE"]
+            # Scoped to the agent's own identity, not every identity that
+            # can touch this resource -- without this, the policy also
+            # blocked legitimate cluster operations (found 2026-09-17:
+            # even an admin's own `kubectl delete` on this fixture was
+            # denied, which is a real operational problem, not just a
+            # demo inconvenience). The point is gating the *agent*, not
+            # gating the platform itself.
+            subjects:
+              - kind: ServiceAccount
+                name: kagent-tools
+                namespace: kagent
       validate:
         message: >-
           denied: mutating a prod-labeled resource requires the
