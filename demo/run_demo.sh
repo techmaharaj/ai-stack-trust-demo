@@ -33,7 +33,7 @@ run() {
   "$@"
 }
 
-clear
+clear || true
 printf "${COLOR_BOLD}== Stage 1/4: the crash is real ==${COLOR_RESET}\n\n"
 run kubectl --context "$KUBE_CTX" get pods -n "${NAMESPACE_PREFIX}-staging"
 echo
@@ -41,7 +41,7 @@ run kubectl --context "$KUBE_CTX" logs -n "${NAMESPACE_PREFIX}-staging" -l app=c
 echo
 read -r -p "$(printf "${COLOR_YELLOW}[press Enter to continue]${COLOR_RESET}")" _
 
-clear
+clear || true
 printf "${COLOR_BOLD}== Stage 2/4: ask the agent ==${COLOR_RESET}\n\n"
 echo "Your agent is ready. Ask it something like:"
 echo "\"checkout-service pods are crashlooping, what's wrong and can we fix it?\""
@@ -72,7 +72,7 @@ CONTROLLER_PF_PID=""
 echo
 read -r -p "$(printf "${COLOR_YELLOW}[press Enter to continue]${COLOR_RESET}")" _
 
-clear
+clear || true
 printf "${COLOR_BOLD}== Stage 4/4: gate 4 (Kyverno + the trace) ==${COLOR_RESET}\n\n"
 echo "If the agent attempted to change checkout-service directly, the"
 echo "Kyverno policy either allowed it (approval annotation present) or"
