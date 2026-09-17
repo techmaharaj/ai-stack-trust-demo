@@ -2,6 +2,11 @@
 # Single-pass, self-guided recording script. No narration text -- only
 # stage separators, real commands, and real output. cyan = command/live
 # input, green = allowed/successful, red = denied/error.
+#
+# Port-forwards are NOT started here -- run scripts/port-forwards.sh in a
+# separate tab first and leave it running (found 2026-09-17: mixing
+# port-forward log lines into this script's own output was confusing to
+# watch and fragile to re-run).
 set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
@@ -13,6 +18,7 @@ if [[ -f .env ]]; then
   set +a
 fi
 : "${NAMESPACE_PREFIX:=ai-trust-demo}"
+JAEGER_PORT="${JAEGER_LOCAL_PORT:-16686}"
 KUBE_CTX="${KUBE_CONTEXT:-}"
 [[ -z "$KUBE_CTX" ]] && KUBE_CTX="$(kubectl config current-context)"
 
@@ -22,31 +28,17 @@ KUBE_CTX="${KUBE_CONTEXT:-}"
 # in this setup (the same request against the controller's API directly
 # works and returns a correct, full response). Calling the API directly
 # until that's fixed upstream.
-CONTROLLER_PF_PID=""
-JAEGER_PF_PID=""
-cleanup() {
-  [[ -n "$CONTROLLER_PF_PID" ]] && kill "$CONTROLLER_PF_PID" 2>/dev/null
-  [[ -n "$JAEGER_PF_PID" ]] && kill "$JAEGER_PF_PID" 2>/dev/null
-  true
-}
-trap cleanup EXIT
 
 run() {
   printf "${COLOR_CYAN}\$ %s${COLOR_RESET}\n" "$*"
   "$@"
 }
 
-# Preflight: check the two local ports this script needs before starting
-# anything. Found 2026-09-17: a leftover port-forward from an earlier
-# session/debugging silently made a *new* port-forward attempt fail with
-# "address already in use" -- harmless if the existing one is actually
-# serving the right thing, but confusing on screen and not something to
-# discover mid-recording. Reuse an already-open port; only start a fresh
-# forward if the port is free.
-JAEGER_PORT="${JAEGER_LOCAL_PORT:-16686}"
 for p in 8083 "$JAEGER_PORT"; do
-  if port_open "$p"; then
-    log_warn "port $p is already in use -- assuming it's an existing port-forward to the right service and reusing it. If gates 3/4 below don't work, something else may be squatting on this port; free it and re-run."
+  if ! port_open "$p"; then
+    log_error "port $p isn't open. Run scripts/port-forwards.sh in a separate"
+    log_error "terminal tab first, leave it running, then re-run this script."
+    exit 1
   fi
 done
 
@@ -69,27 +61,43 @@ printf "${COLOR_RESET}"
 echo
 
 printf "${COLOR_BOLD}== Stage 3/4: gates 1-3 (MCP access, runbook retrieval, kagent orchestration) ==${COLOR_RESET}\n\n"
-if port_open 8083; then
-  log_info "port 8083 already open, reusing it instead of starting a new port-forward"
-else
-  run kubectl --context "$KUBE_CTX" port-forward svc/kagent-controller 8083:8083 -n kagent &
-  CONTROLLER_PF_PID=$!
-  sleep 2
-fi
 MSG_ID="m$(date +%s)"
 run curl -sS -X POST http://localhost:8083/api/a2a/kagent/trust-demo-agent/ \
   -H "Content-Type: application/json" \
   -d "$(python3 -c "import json,sys; print(json.dumps({'jsonrpc':'2.0','id':'1','method':'message/send','params':{'message':{'role':'user','messageId':sys.argv[1],'parts':[{'kind':'text','text':sys.argv[2]}]}}}))" "$MSG_ID" "$PROMPT")" \
-  -o /tmp/ai-stack-trust-demo-response.json
+  -o /tmp/ai-stack-trust-demo-response.json &
+CURL_PID=$!
+
+# This genuinely takes minutes (3-4 sequential free-tier LLM calls) --
+# found 2026-09-17 that a silent multi-minute wait reads as "stuck," not
+# "working." Show elapsed time and a real signal it's alive: what
+# kagent-tools is actually executing right now, not a fake spinner.
+SECONDS=0
+LAST_LINE=""
+while kill -0 "$CURL_PID" 2>/dev/null; do
+  sleep 2
+  LATEST="$(kubectl --context "$KUBE_CTX" logs -n kagent -l app.kubernetes.io/name=kagent-tools --since=10s 2>/dev/null \
+    | grep -o 'command=kubectl args="\[[^]]*\]"' | tail -1 || true)"
+  if [[ -n "$LATEST" && "$LATEST" != "$LAST_LINE" ]]; then
+    printf "\r\033[K${COLOR_CYAN}[%3ds] agent ran: %s${COLOR_RESET}\n" "$SECONDS" "$LATEST"
+    LAST_LINE="$LATEST"
+  else
+    printf "\r\033[K[%3ds] waiting on the model (OpenRouter free tier -- this is normal, can take minutes)..." "$SECONDS"
+  fi
+done
+wait "$CURL_PID" || { printf "\r\033[K"; log_error "the request to the agent failed (curl exit $?)"; exit 1; }
+printf "\r\033[K"
 echo
 python3 -c "
 import json
 with open('/tmp/ai-stack-trust-demo-response.json') as f:
     d = json.load(f)
-print(d['result']['artifacts'][0]['parts'][0]['text'])
+if 'result' in d:
+    print(d['result']['artifacts'][0]['parts'][0]['text'])
+else:
+    print('Agent returned an error instead of a result:')
+    print(json.dumps(d, indent=2))
 "
-kill "$CONTROLLER_PF_PID" 2>/dev/null || true
-CONTROLLER_PF_PID=""
 echo
 read -r -p "$(printf "${COLOR_YELLOW}[press Enter to continue]${COLOR_RESET}")" _
 
@@ -104,14 +112,6 @@ echo "Open Jaeger, find the most recent trace for service 'kagent-tools',"
 echo "and follow it end to end: the MCP call -> the runbook search -> the"
 echo "policy decision."
 printf "${COLOR_RESET}\n"
-if port_open "$JAEGER_PORT"; then
-  log_info "port $JAEGER_PORT already open, reusing it instead of starting a new port-forward"
-else
-  run kubectl --context "$KUBE_CTX" port-forward svc/jaeger-query -n "${NAMESPACE_PREFIX}-observability" "$JAEGER_PORT:16686" &
-  JAEGER_PF_PID=$!
-  sleep 2
-fi
 echo "Jaeger: http://localhost:${JAEGER_PORT}"
 echo
-read -r -p "$(printf "${COLOR_YELLOW}[press Enter to stop the port-forward and exit]${COLOR_RESET}")" _
-kill "$JAEGER_PF_PID" 2>/dev/null || true
+read -r -p "$(printf "${COLOR_YELLOW}[press Enter to exit]${COLOR_RESET}")" _

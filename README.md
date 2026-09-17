@@ -25,8 +25,6 @@ Everything below is scripted end to end: clone, run three scripts, record.
   `.env` to one you already have
 - `kubectl`, `helm`, `python3`, `pip3`, `curl`, `docker`, `envsubst`
   (part of `gettext` -- `apt install gettext` / `brew install gettext`)
-- `kagent` CLI (only needed for `demo/run_demo.sh`, not for setup):
-  `curl https://raw.githubusercontent.com/kagent-dev/kagent/refs/heads/main/scripts/get-kagent | bash`
 - An OpenRouter API key (free tier works -- see the rate-limit note below)
 
 ## Quickstart
@@ -34,8 +32,28 @@ Everything below is scripted end to end: clone, run three scripts, record.
 ```bash
 cp .env.example .env   # fill in OPENROUTER_API_KEY, or let preflight prompt you
 bash scripts/startup.sh
+```
+
+Then, in **two separate terminal tabs**:
+
+```bash
+# Tab 1 -- leave this running for the whole session
+bash scripts/port-forwards.sh
+
+# Tab 2 -- this is the one you record
 bash demo/run_demo.sh
-bash scripts/teardown.sh   # when you're done -- leaves kagent/Kyverno installed
+```
+
+Kept these separate (found 2026-09-17): mixing port-forward log lines into
+the same terminal as the demo script was confusing to watch and fragile to
+re-run ("address already in use" on a second attempt). `demo/run_demo.sh`
+checks both ports are open before starting and tells you exactly what to
+run if they aren't.
+
+When you're done:
+
+```bash
+bash scripts/teardown.sh   # leaves kagent/Kyverno installed
 ```
 
 `scripts/preflight.sh` runs automatically as part of `startup.sh` -- checks
@@ -136,6 +154,16 @@ after any model swap). Re-run the dry runs if you change `LLM_MODEL`.
   image-build time. `retrieval/mcp_server.py` calls `load_collection()`
   explicitly at startup -- without it, every search fails with "call
   load() before search/get/query".
+- **Stage 3 of `demo/run_demo.sh` can sit for 3-7 minutes with no visible
+  output before this fix.** It's making 3-4 sequential calls to a free
+  OpenRouter model, each queuing for a while -- not stuck. The script now
+  polls `kagent-tools`' own logs every 2s and prints each real command as
+  it executes, plus an elapsed-time counter, so it's visibly alive instead
+  of looking hung. This is a real-time cost worth planning your recording
+  around (cut/speed up the wait in editing), not something a faster model
+  reliably fixes -- two different pinned models (a 550B one and one
+  branded "lightning") both took 400+ seconds; the bottleneck looks like
+  OpenRouter's free-tier queueing itself, not model size.
 - **The agent needs to be told, explicitly, not to ask permission before
   acting.** The first real run diagnosed the problem correctly, cited the
   right runbook, then stopped and asked "would you like me to proceed?"
