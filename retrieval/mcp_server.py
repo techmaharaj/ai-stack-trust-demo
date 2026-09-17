@@ -15,6 +15,10 @@ COLLECTION = "runbooks"
 
 mcp = FastMCP("runbook-search")
 _client = MilvusClient(DB_PATH)
+# Milvus Lite persists collections in a 'released' state across process
+# restarts (seeded at image-build time in one process, opened fresh here
+# at runtime) -- must explicitly load before search/query will work.
+_client.load_collection(COLLECTION)
 
 
 @mcp.tool()

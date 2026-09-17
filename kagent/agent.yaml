@@ -45,7 +45,7 @@ spec:
             - k8s_get_pod_logs
             - k8s_describe_resource
             - k8s_get_events
-            - k8s_delete_resource
+            - k8s_patch_resource
       - type: McpServer
         mcpServer:
           apiGroup: kagent.dev
