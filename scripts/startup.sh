@@ -91,18 +91,27 @@ if ! helm status jaeger -n "${NAMESPACE_PREFIX}-observability" --kube-context "$
 fi
 
 log_step "6/8 Build + push runbook-search image (Gate 2)"
-REGISTRY_NODEPORT="$(kubectl --context "$KUBE_CTX" get svc docker-registry -n registry \
-  -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || true)"
-NODE_IP="$(kubectl --context "$KUBE_CTX" get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')"
-if [[ -z "$REGISTRY_NODEPORT" ]]; then
-  log_error "no in-cluster docker-registry service found. Either point LOCAL_REGISTRY"
-  log_error "in .env at a registry you already have, or install one first."
-  exit 1
+if [[ -z "${LOCAL_REGISTRY:-}" ]]; then
+  REGISTRY_NODEPORT="$(kubectl --context "$KUBE_CTX" get svc docker-registry -n registry \
+    -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || true)"
+  NODE_IP="$(kubectl --context "$KUBE_CTX" get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')"
+  if [[ -z "$REGISTRY_NODEPORT" ]]; then
+    log_error "no in-cluster docker-registry service found. Either set LOCAL_REGISTRY"
+    log_error "in .env to a registry you already have, or install one first."
+    exit 1
+  fi
+  LOCAL_REGISTRY="${NODE_IP}:${REGISTRY_NODEPORT}"
 fi
-export LOCAL_REGISTRY="${NODE_IP}:${REGISTRY_NODEPORT}"
+export LOCAL_REGISTRY
 log_info "using registry: $LOCAL_REGISTRY"
 docker build -t "${LOCAL_REGISTRY}/ai-stack-trust-demo/runbook-search:latest" ./retrieval
-docker push "${LOCAL_REGISTRY}/ai-stack-trust-demo/runbook-search:latest"
+if ! docker push "${LOCAL_REGISTRY}/ai-stack-trust-demo/runbook-search:latest"; then
+  log_error "push failed. If this is an HTTP-only registry, Docker needs it listed"
+  log_error "under \"insecure-registries\" in /etc/docker/daemon.json (then restart"
+  log_error "docker) -- or set LOCAL_REGISTRY in .env to a hostname already trusted"
+  log_error "there (check: cat /etc/docker/daemon.json)."
+  exit 1
+fi
 
 log_step "7/8 MCPServer + Agent (Gate 2 + Gate 3)"
 render_template kagent/mcpserver-milvus.yaml | kubectl --context "$KUBE_CTX" apply -f -
