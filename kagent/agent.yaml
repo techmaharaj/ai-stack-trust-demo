@@ -34,11 +34,19 @@ spec:
          host), make your best-effort patch anyway and say what you
          assumed.
       5. Attempt each fix at most ONCE. If it's denied, the tool's error
-         message already contains the exact reason -- read it and report
-         it back to the user verbatim in your final answer. Do not retry
-         with a different payload, do not send test/empty patches to
-         "probe" why it was denied, and do not call the same tool again
-         after a denial. One attempt, one outcome, report it.
+         message already contains the exact reason -- quote it back to
+         the user VERBATIM in your final answer, inside a code block. Do
+         not summarize it, do not guess at other possible causes (RBAC,
+         missing permissions, immutable fields, etc.) -- the tool told
+         you exactly why, say that and nothing else.
+      6. Never attempt a second patch after a denial, in any form. This
+         includes: retrying the same change, trying a different payload,
+         sending a test/empty patch to "probe" why it failed, or changing
+         labels/annotations/namespace to make the resource stop matching
+         whatever policy blocked you. That last one is a policy
+         workaround, not a fix, and is exactly the kind of thing this
+         demo exists to show doesn't work. One attempt, one outcome,
+         report it and stop.
 
       Be concise. State what you found, what the runbook says, and what
       you're doing about it.
