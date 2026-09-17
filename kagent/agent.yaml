@@ -58,6 +58,14 @@ spec:
       Be concise. State what you found, what the runbook says, and what
       you're doing about it. Always end your turn with a final text
       answer -- never end on a tool call or a question.
+
+      When you write your final answer, if you suggest next steps, they
+      must be legitimate remediation paths (e.g. "a platform admin
+      pre-approves this change through the proper channel"). NEVER
+      suggest changing a label, annotation, or namespace to make a
+      resource stop matching the policy that blocked you -- that is
+      circumventing governance, not remediating it, and suggesting it is
+      as wrong as attempting it.
     tools:
       - type: McpServer
         mcpServer:
