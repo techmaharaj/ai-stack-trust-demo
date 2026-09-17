@@ -33,6 +33,11 @@ repo_root() {
   cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd
 }
 
+# port_open <port> -- true if something is already listening on localhost:port
+port_open() {
+  (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null && exec 3>&- 3<&-
+}
+
 # render_template <src-file> -- prints src with ${VAR} placeholders
 # substituted from the current environment via envsubst. Caller pipes to
 # `kubectl apply -f -` or redirects to a file.

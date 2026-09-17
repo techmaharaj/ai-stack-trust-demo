@@ -36,6 +36,20 @@ run() {
   "$@"
 }
 
+# Preflight: check the two local ports this script needs before starting
+# anything. Found 2026-09-17: a leftover port-forward from an earlier
+# session/debugging silently made a *new* port-forward attempt fail with
+# "address already in use" -- harmless if the existing one is actually
+# serving the right thing, but confusing on screen and not something to
+# discover mid-recording. Reuse an already-open port; only start a fresh
+# forward if the port is free.
+JAEGER_PORT="${JAEGER_LOCAL_PORT:-16686}"
+for p in 8083 "$JAEGER_PORT"; do
+  if port_open "$p"; then
+    log_warn "port $p is already in use -- assuming it's an existing port-forward to the right service and reusing it. If gates 3/4 below don't work, something else may be squatting on this port; free it and re-run."
+  fi
+done
+
 clear || true
 printf "${COLOR_BOLD}== Stage 1/4: the crash is real ==${COLOR_RESET}\n\n"
 run kubectl --context "$KUBE_CTX" get pods -n "${NAMESPACE_PREFIX}-staging"
@@ -55,9 +69,13 @@ printf "${COLOR_RESET}"
 echo
 
 printf "${COLOR_BOLD}== Stage 3/4: gates 1-3 (MCP access, runbook retrieval, kagent orchestration) ==${COLOR_RESET}\n\n"
-run kubectl --context "$KUBE_CTX" port-forward svc/kagent-controller 8083:8083 -n kagent &
-CONTROLLER_PF_PID=$!
-sleep 2
+if port_open 8083; then
+  log_info "port 8083 already open, reusing it instead of starting a new port-forward"
+else
+  run kubectl --context "$KUBE_CTX" port-forward svc/kagent-controller 8083:8083 -n kagent &
+  CONTROLLER_PF_PID=$!
+  sleep 2
+fi
 MSG_ID="m$(date +%s)"
 run curl -sS -X POST http://localhost:8083/api/a2a/kagent/trust-demo-agent/ \
   -H "Content-Type: application/json" \
@@ -86,11 +104,14 @@ echo "Open Jaeger, find the most recent trace for service 'kagent-tools',"
 echo "and follow it end to end: the MCP call -> the runbook search -> the"
 echo "policy decision."
 printf "${COLOR_RESET}\n"
-echo "If you don't already have a port-forward running:"
-run kubectl --context "$KUBE_CTX" port-forward svc/jaeger-query -n "${NAMESPACE_PREFIX}-observability" "${JAEGER_LOCAL_PORT:-16686}:16686" &
-JAEGER_PF_PID=$!
-sleep 2
-echo "Jaeger: http://localhost:${JAEGER_LOCAL_PORT:-16686}"
+if port_open "$JAEGER_PORT"; then
+  log_info "port $JAEGER_PORT already open, reusing it instead of starting a new port-forward"
+else
+  run kubectl --context "$KUBE_CTX" port-forward svc/jaeger-query -n "${NAMESPACE_PREFIX}-observability" "$JAEGER_PORT:16686" &
+  JAEGER_PF_PID=$!
+  sleep 2
+fi
+echo "Jaeger: http://localhost:${JAEGER_PORT}"
 echo
 read -r -p "$(printf "${COLOR_YELLOW}[press Enter to stop the port-forward and exit]${COLOR_RESET}")" _
 kill "$JAEGER_PF_PID" 2>/dev/null || true
