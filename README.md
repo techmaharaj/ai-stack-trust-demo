@@ -83,17 +83,21 @@ before touching anything cluster-wide.
 
 ## What's verified vs. what needs a dry run
 
-**Verified live** (2026-09-11): kagent install + slim profile, the
-OpenRouter `ModelConfig` patch, and Gate 1 (built-in tools) end to end via
-the kagent UI chat.
+**Verified live end to end, 2026-09-17**: all four gates, via a direct
+call to `trust-demo-agent` (see the CLI gotcha below for why not through
+`kagent invoke`). Real diagnosis, real runbook citation, a real
+`k8s_patch_resource` attempt genuinely denied by Kyverno's admission
+webhook (confirmed in the admission-controller's own logs, blocking
+`system:serviceaccount:kagent:kagent-tools` itself), and a real trace in
+Jaeger showing `mcp.tool.k8s_patch_resource` with a nested `ERROR`-status
+span for the denied call.
 
-**Scripted but not yet run end to end**: Gate 2 (Milvus MCP server image
-build/push/wire-in), Gate 4 (the real Kyverno deny), and the full
-`demo/run_demo.sh` cut. **Run the whole thing at least 2-3 times before
-you trust it enough to record** -- LLM tool-choice reliability is the one
-genuinely non-deterministic piece here, same lesson learned the hard way
-on an earlier version of this demo. Re-run the dry runs if you change
-`LLM_MODEL`.
+**Still worth doing before you record**: run `demo/run_demo.sh` 2-3 times
+end to end yourself. LLM tool-choice reliability is the one genuinely
+non-deterministic piece here -- the model needs to (a) actually call
+`search_runbooks`, and (b) attempt the patch instead of asking for
+permission first (a system-prompt line fixed this once, but re-verify
+after any model swap). Re-run the dry runs if you change `LLM_MODEL`.
 
 ## Gotchas already found (so you don't hit them again)
 
@@ -115,6 +119,34 @@ on an earlier version of this demo. Re-run the dry runs if you change
 - First-time image pulls for kagent's components can take 10+ minutes on
   a bandwidth-constrained node. Not a config problem, just patience --
   cached after that.
+- **`kagent invoke` (the CLI) fails** on this a2a response shape --
+  `jsonrpc error -32603: failed to decode response: json: cannot
+  unmarshal object into ... []*errordetails.Typed`. The same request
+  against the controller's own API directly works fine and returns a
+  correct, complete response -- looks like a bug in the CLI's a2a client,
+  not this setup. `demo/run_demo.sh` calls the API directly instead.
+- **kagent's MCPServer resources default to `imagePullPolicy:
+  IfNotPresent`.** If you rebuild `retrieval/`'s image and push the same
+  `:latest` tag, the node won't re-pull it unless you force
+  `imagePullPolicy: Always` (already set in `kagent/mcpserver-milvus.yaml`)
+  -- otherwise a fixed bug looks unfixed because the old image is still
+  running.
+- **Milvus Lite's collection loads as `released` on every fresh process**,
+  even though it was seeded (and left loaded) in a different process at
+  image-build time. `retrieval/mcp_server.py` calls `load_collection()`
+  explicitly at startup -- without it, every search fails with "call
+  load() before search/get/query".
+- **The agent needs to be told, explicitly, not to ask permission before
+  acting.** The first real run diagnosed the problem correctly, cited the
+  right runbook, then stopped and asked "would you like me to proceed?"
+  instead of calling its patch tool. Fixed in the system prompt
+  (`kagent/agent.yaml`) -- worth re-checking if you change `LLM_MODEL`.
+- **`startup.sh`'s kagent step must reconcile every run
+  (`helm upgrade --install`), not just install-if-missing.** Gating config
+  changes (like enabling OTel tracing) behind "only if not already
+  installed" meant they silently never applied on a cluster where kagent
+  was already there from an earlier run -- traces just never showed up in
+  Jaeger, with no error anywhere to point at why.
 
 ## Cleanup
 

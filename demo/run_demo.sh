@@ -16,11 +16,17 @@ fi
 KUBE_CTX="${KUBE_CONTEXT:-}"
 [[ -z "$KUBE_CTX" ]] && KUBE_CTX="$(kubectl config current-context)"
 
-require_cmd kagent || {
-  log_error "kagent CLI not found. Install it first:"
-  log_error "  curl https://raw.githubusercontent.com/kagent-dev/kagent/refs/heads/main/scripts/get-kagent | bash"
-  exit 1
+# NOTE (found 2026-09-17): `kagent invoke` fails with a JSON decode error
+# on this a2a response shape ("cannot unmarshal object into
+# []*errordetails.Typed") -- looks like a bug in the CLI's a2a client, not
+# in this setup (the same request against the controller's API directly
+# works and returns a correct, full response). Calling the API directly
+# until that's fixed upstream.
+CONTROLLER_PF_PID=""
+cleanup() {
+  [[ -n "$CONTROLLER_PF_PID" ]] && kill "$CONTROLLER_PF_PID" 2>/dev/null || true
 }
+trap cleanup EXIT
 
 run() {
   printf "${COLOR_CYAN}\$ %s${COLOR_RESET}\n" "$*"
@@ -46,7 +52,23 @@ printf "${COLOR_RESET}"
 echo
 
 printf "${COLOR_BOLD}== Stage 3/4: gates 1-3 (MCP access, runbook retrieval, kagent orchestration) ==${COLOR_RESET}\n\n"
-run kagent invoke -n kagent --agent trust-demo-agent -t "$PROMPT" -v
+run kubectl --context "$KUBE_CTX" port-forward svc/kagent-controller 8083:8083 -n kagent &
+CONTROLLER_PF_PID=$!
+sleep 2
+MSG_ID="m$(date +%s)"
+run curl -sS -X POST http://localhost:8083/api/a2a/kagent/trust-demo-agent/ \
+  -H "Content-Type: application/json" \
+  -d "$(python3 -c "import json,sys; print(json.dumps({'jsonrpc':'2.0','id':'1','method':'message/send','params':{'message':{'role':'user','messageId':sys.argv[1],'parts':[{'kind':'text','text':sys.argv[2]}]}}}))" "$MSG_ID" "$PROMPT")" \
+  -o /tmp/ai-stack-trust-demo-response.json
+echo
+python3 -c "
+import json
+with open('/tmp/ai-stack-trust-demo-response.json') as f:
+    d = json.load(f)
+print(d['result']['artifacts'][0]['parts'][0]['text'])
+"
+kill "$CONTROLLER_PF_PID" 2>/dev/null || true
+CONTROLLER_PF_PID=""
 echo
 read -r -p "$(printf "${COLOR_YELLOW}[press Enter to continue]${COLOR_RESET}")" _
 

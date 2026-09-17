@@ -42,34 +42,37 @@ if ! kubectl --context "$KUBE_CTX" get secret kagent-openai -n kagent >/dev/null
   kubectl --context "$KUBE_CTX" create secret generic kagent-openai -n kagent \
     --from-literal=OPENAI_API_KEY="$OPENROUTER_API_KEY"
 fi
-if ! helm status kagent -n kagent --kube-context "$KUBE_CTX" >/dev/null 2>&1; then
-  # Slim install: only kagent-tools (Gate 1's built-in Kubernetes MCP tools)
-  # and one agent. Grafana MCP, the 9 unused pre-built agents, and the UI
-  # are all dropped -- verified 2026-09-11 this holds steady on a
-  # memory-constrained node. Bring the UI back with:
-  #   kubectl scale deployment kagent-ui -n kagent --replicas=1
-  helm install kagent oci://ghcr.io/kagent-dev/kagent/helm/kagent \
-    --namespace kagent --kube-context "$KUBE_CTX" \
-    --set providers.default=openAI \
-    --set providers.openAI.apiKeySecretRef=kagent-openai \
-    --set providers.openAI.apiKeySecretKey=OPENAI_API_KEY \
-    --set providers.openAI.model="$LLM_MODEL" \
-    --set grafana-mcp.enabled=false \
-    --set ui.replicas=0 \
-    --set argo-rollouts-agent.enabled=false \
-    --set cilium-debug-agent.enabled=false \
-    --set cilium-manager-agent.enabled=false \
-    --set cilium-policy-agent.enabled=false \
-    --set helm-agent.enabled=false \
-    --set istio-agent.enabled=false \
-    --set kgateway-agent.enabled=false \
-    --set observability-agent.enabled=false \
-    --set promql-agent.enabled=false \
-    --set kagent-tools.otel.tracing.enabled=true \
-    --set kagent-tools.otel.tracing.exporter.otlp.endpoint="$OTEL_COLLECTOR_ENDPOINT" \
-    --set kagent-tools.otel.tracing.exporter.otlp.insecure=true \
-    --timeout 8m
-fi
+# `upgrade --install` every run, not just on first install: found
+# 2026-09-17 that gating this behind "if not already installed" meant
+# config changes (e.g. enabling OTel tracing) silently never applied on
+# a cluster where kagent already existed from an earlier run.
+#
+# Slim install: only kagent-tools (Gate 1's built-in Kubernetes MCP tools)
+# and one agent. Grafana MCP, the 9 unused pre-built agents, and the UI
+# are all dropped -- verified 2026-09-11 this holds steady on a
+# memory-constrained node. Bring the UI back with:
+#   kubectl scale deployment kagent-ui -n kagent --replicas=1
+helm upgrade --install kagent oci://ghcr.io/kagent-dev/kagent/helm/kagent \
+  --namespace kagent --kube-context "$KUBE_CTX" \
+  --set providers.default=openAI \
+  --set providers.openAI.apiKeySecretRef=kagent-openai \
+  --set providers.openAI.apiKeySecretKey=OPENAI_API_KEY \
+  --set providers.openAI.model="$LLM_MODEL" \
+  --set grafana-mcp.enabled=false \
+  --set ui.replicas=0 \
+  --set argo-rollouts-agent.enabled=false \
+  --set cilium-debug-agent.enabled=false \
+  --set cilium-manager-agent.enabled=false \
+  --set cilium-policy-agent.enabled=false \
+  --set helm-agent.enabled=false \
+  --set istio-agent.enabled=false \
+  --set kgateway-agent.enabled=false \
+  --set observability-agent.enabled=false \
+  --set promql-agent.enabled=false \
+  --set kagent-tools.otel.tracing.enabled=true \
+  --set kagent-tools.otel.tracing.exporter.otlp.endpoint="$OTEL_COLLECTOR_ENDPOINT" \
+  --set kagent-tools.otel.tracing.exporter.otlp.insecure=true \
+  --timeout 8m
 # GOTCHA (found 2026-09-11): the chart's providers.openAI.baseUrl values
 # key is NOT wired into the ModelConfig template -- setting it via --set
 # is silently ignored. The baseUrl has to be patched onto the ModelConfig
