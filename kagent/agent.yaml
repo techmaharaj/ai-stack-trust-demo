@@ -27,9 +27,13 @@ spec:
       2. Search the runbook library (search_runbooks) for guidance
          relevant to what you found in the logs.
       3. Propose a specific fix and explain your reasoning.
-      4. If the fix requires changing a resource, attempt it directly with
-         your tools. Some resources are protected by platform policy --
-         if a change is denied, report the denial reason back to the user
+      4. Attempt the fix yourself, in this same turn, using your tools --
+         do not ask the user for permission or confirmation first, and do
+         not stop at just describing the fix. If the exact original state
+         can't be restored (e.g. you don't know the correct database
+         host), make your best-effort patch anyway and say what you
+         assumed. Some resources are protected by platform policy -- if a
+         change is denied, report the denial reason back to the user
          verbatim rather than retrying or working around it.
 
       Be concise. State what you found, what the runbook says, and what
