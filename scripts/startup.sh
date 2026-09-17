@@ -82,7 +82,10 @@ log_step "5/8 Jaeger (Gate 4 trace backend)"
 if ! helm status jaeger -n "${NAMESPACE_PREFIX}-observability" --kube-context "$KUBE_CTX" >/dev/null 2>&1; then
   helm repo add jaegertracing https://jaegertracing.github.io/helm-charts >/dev/null 2>&1 || true
   helm repo update jaegertracing >/dev/null 2>&1 || true
-  helm install jaeger jaegertracing/jaeger \
+  # Pinned: newer chart versions changed how `userconfig` is parsed and
+  # crash-loop on this exact config (found 2026-09-17, chart 4.13.1).
+  # 4.0.0 is confirmed working with this userconfig.
+  helm install jaeger jaegertracing/jaeger --version 4.0.0 \
     --namespace "${NAMESPACE_PREFIX}-observability" --kube-context "$KUBE_CTX" \
     -f k8s/observability/jaeger-values.yaml
 fi
