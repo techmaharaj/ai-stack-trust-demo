@@ -60,7 +60,10 @@ read -r -p "> " PROMPT
 printf "${COLOR_RESET}"
 echo
 
-printf "${COLOR_BOLD}== Stage 3/4: gates 1-3 (MCP access, runbook retrieval, kagent orchestration) ==${COLOR_RESET}\n\n"
+printf "${COLOR_BOLD}== Stage 3/4: watch the agent walk the gates ==${COLOR_RESET}\n\n"
+echo "Each real event below is labeled by which gate it is. This is not"
+echo "simulated -- it's read live from the actual pods as they run."
+echo
 MSG_ID="m$(date +%s)"
 run curl -sS -X POST http://localhost:8083/api/a2a/kagent/trust-demo-agent/ \
   -H "Content-Type: application/json" \
@@ -68,21 +71,44 @@ run curl -sS -X POST http://localhost:8083/api/a2a/kagent/trust-demo-agent/ \
   -o /tmp/ai-stack-trust-demo-response.json &
 CURL_PID=$!
 
-# This genuinely takes minutes (3-4 sequential free-tier LLM calls) --
-# found 2026-09-17 that a silent multi-minute wait reads as "stuck," not
-# "working." Show elapsed time and a real signal it's alive: what
-# kagent-tools is actually executing right now, not a fake spinner.
+# This genuinely takes real time (multiple sequential LLM calls) -- found
+# 2026-09-17 that a silent wait reads as "stuck," not "working," and that
+# lumping all of gates 1-3 into one undifferentiated blob didn't show the
+# actual layer structure the talk is about. Poll both pods' own logs and
+# label each real event by which gate it is, as it happens.
 SECONDS=0
-LAST_LINE=""
+LAST_G1=""
+LAST_G2=""
+LAST_G4=""
 while kill -0 "$CURL_PID" 2>/dev/null; do
   sleep 2
-  LATEST="$(kubectl --context "$KUBE_CTX" logs -n kagent -l app.kubernetes.io/name=kagent-tools --since=10s 2>/dev/null \
-    | grep -o 'command=kubectl args="\[[^]]*\]"' | tail -1 || true)"
-  if [[ -n "$LATEST" && "$LATEST" != "$LAST_LINE" ]]; then
-    printf "\r\033[K${COLOR_CYAN}[%3ds] agent ran: %s${COLOR_RESET}\n" "$SECONDS" "$LATEST"
-    LAST_LINE="$LATEST"
-  else
-    printf "\r\033[K[%3ds] waiting on the model (OpenRouter free tier -- this is normal, can take minutes)..." "$SECONDS"
+  G1="$(kubectl --context "$KUBE_CTX" logs -n kagent -l app.kubernetes.io/name=kagent-tools --since=10s 2>/dev/null \
+    | grep 'level=INFO.*executing command' | grep -v patch | tail -1 || true)"
+  G4="$(kubectl --context "$KUBE_CTX" logs -n kagent -l app.kubernetes.io/name=kagent-tools --since=10s 2>/dev/null \
+    | grep -E 'patch deployment|patch pod' | tail -1 || true)"
+  G2="$(kubectl --context "$KUBE_CTX" logs -n kagent -l app.kubernetes.io/name=runbook-search -c mcp-server --since=10s 2>/dev/null \
+    | grep 'mcp.tool=search_runbooks' | tail -1 || true)"
+
+  EVENT=0
+  if [[ -n "$G1" && "$G1" != "$LAST_G1" ]]; then
+    ARGS="$(echo "$G1" | grep -o 'args="\[[^]]*\]"')"
+    printf "\r\033[K${COLOR_GREEN}[%3ds] GATE 1 (access)    -- %s${COLOR_RESET}\n" "$SECONDS" "$ARGS"
+    LAST_G1="$G1"; EVENT=1
+  fi
+  if [[ -n "$G2" && "$G2" != "$LAST_G2" ]]; then
+    printf "\r\033[K${COLOR_GREEN}[%3ds] GATE 2 (retrieval) -- agent queried the runbook library${COLOR_RESET}\n" "$SECONDS"
+    LAST_G2="$G2"; EVENT=1
+  fi
+  if [[ -n "$G4" && "$G4" != "$LAST_G4" ]]; then
+    if echo "$G4" | grep -qi denied; then
+      printf "\r\033[K${COLOR_RED}[%3ds] GATE 4 (governance) -- write attempt DENIED by Kyverno${COLOR_RESET}\n" "$SECONDS"
+    else
+      printf "\r\033[K${COLOR_GREEN}[%3ds] GATE 4 (governance) -- write attempt allowed${COLOR_RESET}\n" "$SECONDS"
+    fi
+    LAST_G4="$G4"; EVENT=1
+  fi
+  if [[ "$EVENT" -eq 0 ]]; then
+    printf "\r\033[K[%3ds] GATE 3 (orchestration) -- model is thinking..." "$SECONDS"
   fi
 done
 wait "$CURL_PID" || { printf "\r\033[K"; log_error "the request to the agent failed (curl exit $?)"; exit 1; }
