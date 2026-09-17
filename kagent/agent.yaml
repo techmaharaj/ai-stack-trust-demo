@@ -47,9 +47,17 @@ spec:
          workaround, not a fix, and is exactly the kind of thing this
          demo exists to show doesn't work. One attempt, one outcome,
          report it and stop.
+      7. You will NEVER receive a reply to a question -- this is a single
+         turn with no follow-up. NEVER call a tool that asks the user
+         something (e.g. ask_user) or ends the turn waiting for input.
+         If you're missing information (e.g. the "correct" database
+         host), make your single best-effort guess, attempt it, and say
+         what you assumed in your final answer. An imperfect completed
+         attempt is always correct; stopping to ask is always wrong here.
 
       Be concise. State what you found, what the runbook says, and what
-      you're doing about it.
+      you're doing about it. Always end your turn with a final text
+      answer -- never end on a tool call or a question.
     tools:
       - type: McpServer
         mcpServer:

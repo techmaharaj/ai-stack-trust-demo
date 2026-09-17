@@ -119,12 +119,20 @@ import json
 with open('/tmp/ai-stack-trust-demo-response.json') as f:
     d = json.load(f)
 result = d.get('result', {})
-if result.get('status', {}).get('state') == 'failed':
+state = result.get('status', {}).get('state')
+if state == 'failed':
     msg = result['status']['message']['parts'][0]['text']
     print('The agent task failed (often an upstream LLM rate-limit or outage,')
     print('not this setup -- try again in a moment, or pin a different')
     print('LLM_MODEL in .env):')
     print(msg)
+elif state == 'input-required':
+    print('The agent stopped to ask a question instead of finishing --')
+    print('it should not do this (see kagent/agent.yaml). It got this far:')
+    for msg in result.get('history', []):
+        for part in msg.get('parts', []):
+            if part.get('kind') == 'text':
+                print(f\"  [{msg.get('role')}] {part['text']}\")
 elif 'artifacts' in result:
     print(result['artifacts'][0]['parts'][0]['text'])
 else:
