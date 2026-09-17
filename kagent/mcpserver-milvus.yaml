@@ -12,6 +12,10 @@ metadata:
 spec:
   deployment:
     image: ${LOCAL_REGISTRY}/ai-stack-trust-demo/runbook-search:latest
+    # kagent defaults to IfNotPresent, which never re-pulls a `:latest`
+    # tag once cached on the node -- force a fresh pull every time
+    # (found 2026-09-17: a stale cached image masked a real code fix).
+    imagePullPolicy: Always
     cmd: python
     args: ["mcp_server.py"]
     port: 3000
