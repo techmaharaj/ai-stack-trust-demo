@@ -118,7 +118,7 @@ fi
 
 log_step "7/8 MCPServer + Agent (Gate 2 + Gate 3)"
 render_template kagent/mcpserver-milvus.yaml | kubectl --context "$KUBE_CTX" apply -f -
-kubectl --context "$KUBE_CTX" apply -f kagent/agent.yaml
+render_template kagent/agent.yaml | kubectl --context "$KUBE_CTX" apply -f -
 
 log_step "8/8 Waiting for everything to be Ready"
 kubectl --context "$KUBE_CTX" wait --for=condition=Ready pod -l app.kubernetes.io/instance=kagent -n kagent --timeout=300s || true
