@@ -74,12 +74,23 @@ CURL_PID=$!
 # This genuinely takes real time (multiple sequential LLM calls) -- found
 # 2026-09-17 that a silent wait reads as "stuck," not "working," and that
 # lumping all of gates 1-3 into one undifferentiated blob didn't show the
-# actual layer structure the talk is about. Poll both pods' own logs and
-# label each real event by which gate it is, as it happens.
+# actual layer structure the talk is about. Found again: a flashing log
+# line per event isn't a trust story for an audience -- print a one-time
+# banner with the trust question the first time each gate fires, and
+# build a scorecard of what was allowed/denied to show at the end.
+gate_banner() {
+  # $1=color $2=name $3=question
+  printf "\n${!1}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+  printf "  %s\n" "$2"
+  printf "  \"%s\"\n" "$3"
+  printf "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}\n"
+}
+
 SECONDS=0
-LAST_G1=""
-LAST_G2=""
-LAST_G4=""
+LAST_G1=""; LAST_G2=""; LAST_G4=""
+SEEN_G1=0; SEEN_G2=0; SEEN_G4=0
+G1_COUNT=0; G4_ALLOW_COUNT=0; G4_DENY_COUNT=0
+G2_SNIPPET=""; G4_MESSAGE=""
 while kill -0 "$CURL_PID" 2>/dev/null; do
   sleep 2
   G1="$(kubectl --context "$KUBE_CTX" logs -n kagent -l app.kubernetes.io/name=kagent-tools --since=10s 2>/dev/null \
@@ -91,24 +102,42 @@ while kill -0 "$CURL_PID" 2>/dev/null; do
 
   EVENT=0
   if [[ -n "$G1" && "$G1" != "$LAST_G1" ]]; then
+    if [[ "$SEEN_G1" -eq 0 ]]; then
+      gate_banner COLOR_GREEN "GATE 1 -- ACCESS (MCP)" "Can this identity even reach the cluster to look?"
+      SEEN_G1=1
+    fi
     ARGS="$(echo "$G1" | grep -o 'args="\[[^]]*\]"')"
-    printf "\r\033[K${COLOR_GREEN}[%3ds] GATE 1 (access)    -- %s${COLOR_RESET}\n" "$SECONDS" "$ARGS"
+    printf "${COLOR_CYAN}\$ kubectl %s${COLOR_RESET}\n" "$(echo "$ARGS" | sed 's/^args="\[//;s/\]"$//' | tr -d '"' | tr ',' ' ')"
+    G1_COUNT=$((G1_COUNT+1))
     LAST_G1="$G1"; EVENT=1
   fi
   if [[ -n "$G2" && "$G2" != "$LAST_G2" ]]; then
-    printf "\r\033[K${COLOR_GREEN}[%3ds] GATE 2 (retrieval) -- agent queried the runbook library${COLOR_RESET}\n" "$SECONDS"
+    if [[ "$SEEN_G2" -eq 0 ]]; then
+      gate_banner COLOR_GREEN "GATE 2 -- RETRIEVAL (Milvus)" "What does prior experience already know about this?"
+      SEEN_G2=1
+    fi
+    echo "querying the runbook library for relevant guidance..."
     LAST_G2="$G2"; EVENT=1
   fi
   if [[ -n "$G4" && "$G4" != "$LAST_G4" ]]; then
+    if [[ "$SEEN_G4" -eq 0 ]]; then
+      gate_banner COLOR_YELLOW "GATE 4 -- GOVERNANCE (Kyverno)" "Is this identity actually allowed to make this change?"
+      SEEN_G4=1
+    fi
     if echo "$G4" | grep -qi denied; then
-      printf "\r\033[K${COLOR_RED}[%3ds] GATE 4 (governance) -- write attempt DENIED by Kyverno${COLOR_RESET}\n" "$SECONDS"
+      G4_MESSAGE="$(echo "$G4" | grep -o "denied:[^']*" | head -1)"
+      printf "${COLOR_RED}\$ kubectl patch ...   ->  DENIED: %s${COLOR_RESET}\n" "${G4_MESSAGE:-see policy message}"
+      G4_DENY_COUNT=$((G4_DENY_COUNT+1))
     else
-      printf "\r\033[K${COLOR_GREEN}[%3ds] GATE 4 (governance) -- write attempt allowed${COLOR_RESET}\n" "$SECONDS"
+      printf "${COLOR_GREEN}\$ kubectl patch ...   ->  ALLOWED${COLOR_RESET}\n"
+      G4_ALLOW_COUNT=$((G4_ALLOW_COUNT+1))
     fi
     LAST_G4="$G4"; EVENT=1
   fi
   if [[ "$EVENT" -eq 0 ]]; then
-    printf "\r\033[K[%3ds] GATE 3 (orchestration) -- model is thinking..." "$SECONDS"
+    printf "\r\033[K[%3ds] GATE 3 -- ORCHESTRATION: model is reasoning about what to do next..." "$SECONDS"
+  else
+    printf "\r\033[K"
   fi
 done
 wait "$CURL_PID" || { printf "\r\033[K"; log_error "the request to the agent failed (curl exit $?)"; exit 1; }
@@ -139,6 +168,18 @@ else:
     print('Unexpected response shape:')
     print(json.dumps(d, indent=2))
 "
+echo
+printf "${COLOR_BOLD}== Gate scorecard ==${COLOR_RESET}\n"
+printf "  GATE 1 (access)        %s\n" "$([[ $G1_COUNT -gt 0 ]] && echo "${COLOR_GREEN}ALLOWED${COLOR_RESET} -- $G1_COUNT real cluster read(s)" || echo "not used this run")"
+printf "  GATE 2 (retrieval)     %s\n" "$([[ $SEEN_G2 -eq 1 ]] && echo "${COLOR_GREEN}ALLOWED${COLOR_RESET} -- runbook library queried" || echo "not used this run")"
+printf "  GATE 3 (orchestration) %s\n" "${COLOR_GREEN}ran for ${SECONDS}s, deciding what to do${COLOR_RESET}"
+if [[ $G4_DENY_COUNT -gt 0 ]]; then
+  printf "  GATE 4 (governance)    ${COLOR_RED}DENIED${COLOR_RESET} x%d -- %s\n" "$G4_DENY_COUNT" "${G4_MESSAGE:-see policy message above}"
+elif [[ $G4_ALLOW_COUNT -gt 0 ]]; then
+  printf "  GATE 4 (governance)    ${COLOR_GREEN}ALLOWED${COLOR_RESET} x%d\n" "$G4_ALLOW_COUNT"
+else
+  printf "  GATE 4 (governance)    not triggered this run (no write attempted)\n"
+fi
 echo
 read -r -p "$(printf "${COLOR_YELLOW}[press Enter to continue]${COLOR_RESET}")" _
 

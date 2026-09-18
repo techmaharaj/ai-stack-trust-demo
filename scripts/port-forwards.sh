@@ -32,9 +32,14 @@ for p in 8083 "$JAEGER_PORT"; do
 done
 
 log_step "Starting both port-forwards -- leave this tab open"
+# controller stays on 127.0.0.1 -- only demo/run_demo.sh (on this same
+# host) needs it. Jaeger binds 0.0.0.0 -- found 2026-09-18: recording
+# from a laptop means the browser needs to reach it over the LAN, not
+# just from this host. No auth in front of it, same tradeoff as
+# kagent-ui earlier -- fine for a demo box, not for anything sensitive.
 kubectl --context "$KUBE_CTX" port-forward svc/kagent-controller 8083:8083 -n kagent &
 PID1=$!
-kubectl --context "$KUBE_CTX" port-forward svc/jaeger-query -n "${NAMESPACE_PREFIX}-observability" "$JAEGER_PORT:16686" &
+kubectl --context "$KUBE_CTX" port-forward --address 0.0.0.0 svc/jaeger-query -n "${NAMESPACE_PREFIX}-observability" "$JAEGER_PORT:16686" &
 PID2=$!
 
 cleanup() {
@@ -43,7 +48,8 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-log_info "kagent controller: http://localhost:8083"
-log_info "Jaeger:             http://localhost:${JAEGER_PORT}"
+log_info "kagent controller: http://localhost:8083 (this host only)"
+log_info "Jaeger:             http://localhost:${JAEGER_PORT} (this host)"
+log_info "                    http://$(hostname):${JAEGER_PORT} (from your laptop, same network)"
 log_info "Ctrl+C here when you're done recording."
 wait
