@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 # Run this in its own terminal tab, separate from demo/run_demo.sh --
-# keeps the recording terminal free of port-forward log lines (found
-# 2026-09-17: mixing them into the same terminal as the demo script was
-# confusing to watch and fragile to re-run -- "address already in use"
-# errors on re-runs, no clean way to tell what's actually happening).
+# keeps the recording terminal free of port-forward log lines and avoids
+# "address already in use" errors on repeat runs.
 #
 # Leave this running for the whole demo/run_demo.sh session. Ctrl+C here
 # when you're done recording.
@@ -33,11 +31,10 @@ done
 
 # Auto-reconnecting: kubectl port-forward tunnels to a specific pod IP
 # resolved at start time and does NOT follow the Service if that pod is
-# replaced (a helm upgrade, or restarting a deployment to reset Jaeger's
-# in-memory traces for a clean slate both do this) -- found 2026-09-18
-# that a controller restart silently broke the tunnel with no obvious
-# error until the next demo run failed. Wrapping in a retry loop means a
-# dropped tunnel reconnects to whatever pod is live now, automatically.
+# replaced (a helm upgrade, or resetting Jaeger's in-memory traces for a
+# clean slate, both do this) -- a dropped tunnel otherwise fails silently
+# until the next demo run errors out. Wrapping in a retry loop means it
+# reconnects to whatever pod is live now, automatically.
 reconnecting_forward() {
   local desc="$1"; shift
   while true; do

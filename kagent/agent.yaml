@@ -88,11 +88,10 @@ spec:
     deployment:
       # The agent's own reasoning/LLM-call spans need the *chart-level*
       # `otel.tracing.enabled` Helm value (see scripts/startup.sh), not a
-      # per-Agent env var -- found 2026-09-18: the kagent controller
-      # unconditionally appends its own OTEL_TRACING_ENABLED=false AFTER
-      # any custom env vars set here, so a per-Agent override here is
-      # silently clobbered. This section intentionally left without an
-      # env override.
+      # per-Agent env var: the kagent controller unconditionally appends
+      # its own OTEL_TRACING_ENABLED=false after any custom env vars set
+      # here, so a per-Agent override would be silently clobbered. This
+      # section intentionally left without an env override.
       resources:
         requests:
           cpu: 50m

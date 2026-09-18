@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """Renders the agent's full response history as a gate-by-gate walkthrough
 with the real command and real, complete output for every tool call --
-no truncation, no simulation. Replaces live log-scraping (found
-2026-09-18: log-scraping during the wait couldn't show full output, cut
-off multi-line denial messages, and had bash printf color-escaping bugs).
-Reads the whole task history only after the response is complete, so
-every detail here is exactly what happened, verbatim.
+no truncation, no simulation. Reads the whole task history only after the
+response is complete, so every detail here is exactly what happened,
+verbatim.
 """
 import json
 import sys
@@ -29,9 +27,9 @@ GATES = {
 BANNER = "━" * 63
 
 # These three tools routinely return huge dumps (a full cluster-wide pod
-# list, a full `describe`, a full events JSON blob) that buried the
-# actually-interesting gate 2/4 output -- found 2026-09-18. Truncate just
-# these; search_runbooks and k8s_patch_resource stay full, they're already
+# list, a full `describe`, a full events JSON blob) that bury the
+# actually-interesting gate 2/4 output. Truncate just these;
+# search_runbooks and k8s_patch_resource stay full -- they're already
 # short and are the parts that matter most.
 TRUNCATE_TOOLS = {"k8s_get_resources", "k8s_describe_resource", "k8s_get_events"}
 TRUNCATE_LINES = 12
@@ -115,13 +113,13 @@ def main():
                         counts[gate_id] += 1
 
                         # Classify by whether the tool actually reported an
-                        # error, not by string-matching "denied" in the text
-                        # -- found 2026-09-18 that kagent-tools sometimes
-                        # returns a bare "exit status 1" with no policy
-                        # message at all, which the string-match missed
-                        # entirely and mislabeled as ALLOWED. A patch that
-                        # errored never took effect, full stop, regardless
-                        # of whether the reason text came through.
+                        # error, not by string-matching "denied" in the
+                        # text -- kagent-tools sometimes returns a bare
+                        # "exit status 1" with no policy message at all,
+                        # which a string-match would miss and mislabel as
+                        # ALLOWED. A patch that errored never took effect,
+                        # full stop, regardless of whether the reason text
+                        # came through.
                         is_denied = (gate_id == "4") and (error is not None)
                         line_color = RED if is_denied else GREEN
                         print(f"\n{CYAN}$ {name}({json.dumps(args)}){RESET}")

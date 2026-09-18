@@ -7,13 +7,12 @@
 # themselves, so this webhook genuinely intercepts them -- no simulation
 # layer needed.
 #
-# GOTCHA (found 2026-09-17, first live run): checking request.object
-# instead of request.oldObject let the agent self-approve -- it just added
-# the annotation in the same patch that was supposed to be gated by it.
-# oldObject reflects the resource's state prior to this request, so the
-# annotation only counts if a human (or something with a distinct
-# identity) put it there beforehand; the agent including it in its own
-# payload no longer helps.
+# Checking request.object instead of request.oldObject would let the
+# agent self-approve: it could just add the annotation in the same patch
+# that's supposed to be gated by it. oldObject reflects the resource's
+# state prior to this request, so the annotation only counts if a human
+# (or something with a distinct identity) put it there beforehand -- the
+# agent including it in its own payload doesn't help.
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
@@ -35,11 +34,9 @@ spec:
               operations: ["UPDATE", "DELETE"]
             # Scoped to the agent's own identity, not every identity that
             # can touch this resource -- without this, the policy also
-            # blocked legitimate cluster operations (found 2026-09-17:
-            # even an admin's own `kubectl delete` on this fixture was
-            # denied, which is a real operational problem, not just a
-            # demo inconvenience). The point is gating the *agent*, not
-            # gating the platform itself.
+            # blocks legitimate cluster operations (e.g. an admin's own
+            # `kubectl delete` on this fixture). The point is gating the
+            # *agent*, not gating the platform itself.
             subjects:
               - kind: ServiceAccount
                 name: kagent-tools

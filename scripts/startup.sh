@@ -42,15 +42,15 @@ if ! kubectl --context "$KUBE_CTX" get secret kagent-openai -n kagent >/dev/null
   kubectl --context "$KUBE_CTX" create secret generic kagent-openai -n kagent \
     --from-literal=OPENAI_API_KEY="$OPENROUTER_API_KEY"
 fi
-# `upgrade --install` every run, not just on first install: found
-# 2026-09-17 that gating this behind "if not already installed" meant
-# config changes (e.g. enabling OTel tracing) silently never applied on
-# a cluster where kagent already existed from an earlier run.
+# `upgrade --install` every run, not just on first install: gating this
+# behind "if not already installed" would mean config changes (e.g.
+# enabling OTel tracing) never apply on a cluster where kagent already
+# exists from an earlier run.
 #
 # Slim install: only kagent-tools (Gate 1's built-in Kubernetes MCP tools)
 # and one agent. Grafana MCP, the 9 unused pre-built agents, and the UI
-# are all dropped -- verified 2026-09-11 this holds steady on a
-# memory-constrained node. Bring the UI back with:
+# are all dropped to reduce footprint on a memory-constrained node. Bring
+# the UI back with:
 #   kubectl scale deployment kagent-ui -n kagent --replicas=1
 helm upgrade --install kagent oci://ghcr.io/kagent-dev/kagent/helm/kagent \
   --namespace kagent --kube-context "$KUBE_CTX" \
@@ -76,10 +76,10 @@ helm upgrade --install kagent oci://ghcr.io/kagent-dev/kagent/helm/kagent \
   --set otel.tracing.exporter.otlp.endpoint="$OTEL_COLLECTOR_ENDPOINT" \
   --set otel.tracing.exporter.otlp.insecure=true \
   --timeout 8m
-# GOTCHA (found 2026-09-11): the chart's providers.openAI.baseUrl values
-# key is NOT wired into the ModelConfig template -- setting it via --set
-# is silently ignored. The baseUrl has to be patched onto the ModelConfig
-# object directly, per kagent's own BYO-OpenAI-compatible-provider doc.
+# The chart's providers.openAI.baseUrl values key is NOT wired into the
+# ModelConfig template -- setting it via --set is silently ignored. The
+# baseUrl has to be patched onto the ModelConfig object directly, per
+# kagent's own BYO-OpenAI-compatible-provider doc.
 log_info "patching ModelConfig baseUrl to OpenRouter (chart doesn't wire this through --set)"
 kubectl --context "$KUBE_CTX" patch modelconfig default-model-config -n kagent \
   --type=merge -p '{"spec":{"openAI":{"baseUrl":"https://openrouter.ai/api/v1"}}}'
@@ -88,9 +88,9 @@ log_step "5/8 Jaeger (Gate 4 trace backend)"
 if ! helm status jaeger -n "${NAMESPACE_PREFIX}-observability" --kube-context "$KUBE_CTX" >/dev/null 2>&1; then
   helm repo add jaegertracing https://jaegertracing.github.io/helm-charts >/dev/null 2>&1 || true
   helm repo update jaegertracing >/dev/null 2>&1 || true
-  # Pinned: newer chart versions changed how `userconfig` is parsed and
-  # crash-loop on this exact config (found 2026-09-17, chart 4.13.1).
-  # 4.0.0 is confirmed working with this userconfig.
+  # Pinned: newer chart versions (e.g. 4.13.1) changed how `userconfig`
+  # is parsed and crash-loop on this exact config. 4.0.0 is confirmed
+  # working with this userconfig.
   helm install jaeger jaegertracing/jaeger --version 4.0.0 \
     --namespace "${NAMESPACE_PREFIX}-observability" --kube-context "$KUBE_CTX" \
     -f k8s/observability/jaeger-values.yaml

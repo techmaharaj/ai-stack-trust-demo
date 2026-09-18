@@ -4,9 +4,8 @@
 # input, green = allowed/successful, red = denied/error.
 #
 # Port-forwards are NOT started here -- run scripts/port-forwards.sh in a
-# separate tab first and leave it running (found 2026-09-17: mixing
-# port-forward log lines into this script's own output was confusing to
-# watch and fragile to re-run).
+# separate tab first and leave it running. Keeps this script's output
+# clean and avoids "address already in use" on repeat runs.
 set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
@@ -22,12 +21,11 @@ JAEGER_PORT="${JAEGER_LOCAL_PORT:-16686}"
 KUBE_CTX="${KUBE_CONTEXT:-}"
 [[ -z "$KUBE_CTX" ]] && KUBE_CTX="$(kubectl config current-context)"
 
-# NOTE (found 2026-09-17): `kagent invoke` fails with a JSON decode error
-# on this a2a response shape ("cannot unmarshal object into
-# []*errordetails.Typed") -- looks like a bug in the CLI's a2a client, not
-# in this setup (the same request against the controller's API directly
-# works and returns a correct, full response). Calling the API directly
-# until that's fixed upstream.
+# NOTE: `kagent invoke` (the CLI) fails on this agent's a2a response
+# shape ("cannot unmarshal object into []*errordetails.Typed") -- looks
+# like a bug in the CLI's a2a client, not this setup. The same request
+# against the controller's API directly works and returns a correct,
+# complete response, so that's what's used here instead.
 
 run() {
   printf "${COLOR_CYAN}\$ %s${COLOR_RESET}\n" "$*"
@@ -43,11 +41,10 @@ for p in 8083 "$JAEGER_PORT"; do
 done
 
 # Clean slate: Jaeger's in-memory storage has no purge API, so the only
-# way to actually clear old traces/services (found 2026-09-18: seeing
-# k8s-agent, kagent-controller etc. from unrelated earlier testing
-# cluttering the trace view) is restarting its pod. Safe now that
-# scripts/port-forwards.sh auto-reconnects when this breaks its tunnel --
-# give it a few seconds to notice and reconnect before Stage 4 needs it.
+# way to clear old traces and unrelated services from the trace view is
+# restarting its pod. Safe because scripts/port-forwards.sh auto-reconnects
+# when this breaks its tunnel -- give it a few seconds to notice and
+# reconnect before Stage 4 needs it.
 log_step "Resetting Jaeger for a clean slate (wipes stored traces)"
 kubectl --context "$KUBE_CTX" rollout restart deployment/jaeger -n "${NAMESPACE_PREFIX}-observability" >/dev/null
 kubectl --context "$KUBE_CTX" rollout status deployment/jaeger -n "${NAMESPACE_PREFIX}-observability" --timeout=60s >/dev/null
@@ -82,12 +79,11 @@ run curl -sS -X POST http://localhost:8083/api/a2a/kagent/trust-demo-agent/ \
   -o /tmp/ai-stack-trust-demo-response.json &
 CURL_PID=$!
 
-# This genuinely takes real time (multiple sequential LLM calls) -- found
-# 2026-09-17 that a silent wait reads as "stuck," not "working." A simple
-# elapsed-time ticker here is enough; the detailed gate-by-gate breakdown
-# happens after the response arrives (see render_response.py) -- found
-# 2026-09-18 that live log-scraping during the wait couldn't show full,
-# untruncated output and had a bash printf color-escaping bug.
+# This genuinely takes real time (multiple sequential LLM calls) -- a
+# silent wait reads as "stuck," not "working," so a simple elapsed-time
+# ticker runs here. The detailed gate-by-gate breakdown happens after the
+# response arrives (see render_response.py), which can show the full,
+# untruncated output in a way a live-scraping approach could not.
 SECONDS=0
 while kill -0 "$CURL_PID" 2>/dev/null; do
   sleep 2
@@ -106,13 +102,12 @@ echo
 python3 "$ROOT_DIR/demo/render_response.py" /tmp/ai-stack-trust-demo-response.json
 echo
 
-# Ground truth, independent of what the agent's tool call reported: found
-# 2026-09-18 that k8s_patch_resource essentially never returns Kyverno's
-# actual message to the model (just a bare "exit status 1") -- but
-# kagent-tools' own pod log always captures the real kubectl stderr, since
-# that's what's actually happening at the API server. Show it directly so
-# the audience sees Kyverno's real words, not just the agent's account of
-# them.
+# Ground truth, independent of what the agent's tool call reported:
+# k8s_patch_resource often returns only a bare "exit status 1" to the
+# model, without Kyverno's actual denial message. kagent-tools' own pod
+# log always captures the real kubectl stderr, since that's what's
+# actually happening at the API server. Show it directly so the audience
+# sees Kyverno's real words, not just the agent's account of them.
 GROUND_TRUTH="$(kubectl --context "$KUBE_CTX" logs -n kagent -l app.kubernetes.io/name=kagent-tools --since="${SECONDS}s" 2>/dev/null \
   | grep -i 'denied the request' | tail -1 || true)"
 if [[ -n "$GROUND_TRUTH" ]]; then
