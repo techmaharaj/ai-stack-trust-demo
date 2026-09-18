@@ -82,7 +82,14 @@ while kill -0 "$CURL_PID" 2>/dev/null; do
   sleep 2
   printf "\r\033[K[%3ds] waiting on the agent (this can take a while)..." "$SECONDS"
 done
-wait "$CURL_PID" || { printf "\r\033[K"; log_error "the request to the agent failed (curl exit $?)"; exit 1; }
+if ! wait "$CURL_PID"; then
+  CURL_EXIT=$?
+  printf "\r\033[K"
+  log_error "the request to the agent failed (curl exit $CURL_EXIT)"
+  log_error "if this says 'connection refused', the port-forward in the other"
+  log_error "tab may have died -- check it and restart scripts/port-forwards.sh"
+  exit 1
+fi
 printf "\r\033[K"
 echo
 python3 "$ROOT_DIR/demo/render_response.py" /tmp/ai-stack-trust-demo-response.json
