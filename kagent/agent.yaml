@@ -86,17 +86,13 @@ spec:
           toolNames:
             - search_runbooks
     deployment:
-      # The agent's own reasoning/LLM-call spans are OFF by default (its
-      # boot log literally says "ADK telemetry disabled (set
-      # OTEL_TRACING_ENABLED or OTEL_LOGGING_ENABLED to true)") --
-      # separate from kagent-tools' own tracing config. Without this, the
-      # Jaeger trace only shows tool execution, not the model call itself
-      # (found 2026-09-18).
-      env:
-        - name: OTEL_TRACING_ENABLED
-          value: "true"
-        - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: "${OTEL_COLLECTOR_ENDPOINT}"
+      # The agent's own reasoning/LLM-call spans need the *chart-level*
+      # `otel.tracing.enabled` Helm value (see scripts/startup.sh), not a
+      # per-Agent env var -- found 2026-09-18: the kagent controller
+      # unconditionally appends its own OTEL_TRACING_ENABLED=false AFTER
+      # any custom env vars set here, so a per-Agent override here is
+      # silently clobbered. This section intentionally left without an
+      # env override.
       resources:
         requests:
           cpu: 50m

@@ -72,6 +72,9 @@ helm upgrade --install kagent oci://ghcr.io/kagent-dev/kagent/helm/kagent \
   --set kagent-tools.otel.tracing.enabled=true \
   --set kagent-tools.otel.tracing.exporter.otlp.endpoint="$OTEL_COLLECTOR_ENDPOINT" \
   --set kagent-tools.otel.tracing.exporter.otlp.insecure=true \
+  --set otel.tracing.enabled=true \
+  --set otel.tracing.exporter.otlp.endpoint="$OTEL_COLLECTOR_ENDPOINT" \
+  --set otel.tracing.exporter.otlp.insecure=true \
   --timeout 8m
 # GOTCHA (found 2026-09-11): the chart's providers.openAI.baseUrl values
 # key is NOT wired into the ModelConfig template -- setting it via --set
