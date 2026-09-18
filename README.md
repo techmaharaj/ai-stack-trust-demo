@@ -68,9 +68,7 @@ API and to Jaeger) and runs independently of the recording tab so its
 output doesn't clutter the terminal you're recording.
 
 Run `demo/run_demo.sh` a few times end to end before you actually record
--- LLM tool-choice is the one non-deterministic part of this demo. See
-[Troubleshooting](docs/TROUBLESHOOTING.md) if a run doesn't behave the way
-you expect.
+-- LLM tool-choice is the one non-deterministic part of this demo.
 
 When you're done:
 
@@ -144,8 +142,3 @@ Kyverno installed** -- it doesn't assume it's the only thing depending on
 them. The script prints the manual commands to remove those fully if you
 want a clean cluster.
 
-## Troubleshooting
-
-See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for known
-limitations and behavior you may run into -- model and prompt behavior,
-kagent/Helm quirks, the Kyverno policy design, retrieval, and networking.
