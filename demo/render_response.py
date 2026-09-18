@@ -28,6 +28,24 @@ GATES = {
 
 BANNER = "━" * 63
 
+# These three tools routinely return huge dumps (a full cluster-wide pod
+# list, a full `describe`, a full events JSON blob) that buried the
+# actually-interesting gate 2/4 output -- found 2026-09-18. Truncate just
+# these; search_runbooks and k8s_patch_resource stay full, they're already
+# short and are the parts that matter most.
+TRUNCATE_TOOLS = {"k8s_get_resources", "k8s_describe_resource", "k8s_get_events"}
+TRUNCATE_LINES = 12
+
+
+def truncate(text, name):
+    if name not in TRUNCATE_TOOLS:
+        return text
+    lines = text.splitlines()
+    if len(lines) <= TRUNCATE_LINES:
+        return text
+    shown = lines[:TRUNCATE_LINES]
+    return "\n".join(shown) + f"\n... ({len(lines) - TRUNCATE_LINES} more lines truncated)"
+
 
 def banner(color, name, question):
     print(f"\n{color}{BANNER}")
@@ -107,7 +125,7 @@ def main():
                         is_denied = (gate_id == "4") and (error is not None)
                         line_color = RED if is_denied else GREEN
                         print(f"\n{CYAN}$ {name}({json.dumps(args)}){RESET}")
-                        print(f"{line_color}{text_out.strip()}{RESET}")
+                        print(f"{line_color}{truncate(text_out.strip(), name)}{RESET}")
 
                         if gate_id == "4":
                             if is_denied:

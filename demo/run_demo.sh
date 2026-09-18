@@ -42,6 +42,17 @@ for p in 8083 "$JAEGER_PORT"; do
   fi
 done
 
+# Clean slate: Jaeger's in-memory storage has no purge API, so the only
+# way to actually clear old traces/services (found 2026-09-18: seeing
+# k8s-agent, kagent-controller etc. from unrelated earlier testing
+# cluttering the trace view) is restarting its pod. Safe now that
+# scripts/port-forwards.sh auto-reconnects when this breaks its tunnel --
+# give it a few seconds to notice and reconnect before Stage 4 needs it.
+log_step "Resetting Jaeger for a clean slate (wipes stored traces)"
+kubectl --context "$KUBE_CTX" rollout restart deployment/jaeger -n "${NAMESPACE_PREFIX}-observability" >/dev/null
+kubectl --context "$KUBE_CTX" rollout status deployment/jaeger -n "${NAMESPACE_PREFIX}-observability" --timeout=60s >/dev/null
+sleep 3
+
 clear || true
 printf "${COLOR_BOLD}== Stage 1/4: the crash is real ==${COLOR_RESET}\n\n"
 run kubectl --context "$KUBE_CTX" get pods -n "${NAMESPACE_PREFIX}-staging"
