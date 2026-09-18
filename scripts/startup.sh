@@ -11,7 +11,7 @@ source .env
 set +a
 : "${NAMESPACE_PREFIX:=ai-trust-demo}"
 : "${APPROVAL_ANNOTATION_KEY:=demo.io/approved-by}"
-: "${LLM_MODEL:=openrouter/free}"
+: "${LLM_MODEL:=anthropic/claude-haiku-4.5}"
 KUBE_CTX="${KUBE_CONTEXT:-}"
 [[ -z "$KUBE_CTX" ]] && KUBE_CTX="$(kubectl config current-context)"
 export NAMESPACE_PREFIX APPROVAL_ANNOTATION_KEY
